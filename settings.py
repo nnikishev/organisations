@@ -1,6 +1,7 @@
-from dotenv import load_dotenv
 from os import getenv
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = BASE_DIR / "app"
@@ -16,3 +17,5 @@ DB_CONN_TIMEOUT = getenv("DB_CONN_TIMEOUT", 3)
 DB_ONESQL_TIMEOUT = getenv("DB_ONESQL_TIMEOUT", 10)
 
 CORS_ORIGIN_WHITELIST = [h.strip() for h in getenv("CORS_ORIGIN_WHITELIST").split(",")]
+
+PAGE_SIZE = getenv("PAGE_SIZE", 20)
