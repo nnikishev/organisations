@@ -17,17 +17,13 @@ def validate_api_key(x_api_key: str = Header(..., alias="X-API-Key")):
     if x_api_key != API_KEY:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API Key",
+            detail="Ошибка авторизации",
         )
     return x_api_key
 
 
 @cbv(router)
 class OrganizationViews(CRUD):
-    """
-    CRUD и специализированные эндпоинты для справочника организаций.
-    """
-
     model = Organization
     create_update_schema = OrganisationCreateUpdate
 

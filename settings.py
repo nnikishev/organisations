@@ -8,6 +8,7 @@ APP_DIR = BASE_DIR / "app"
 
 load_dotenv(BASE_DIR / ".env")
 
+MASTER_DB = getenv("MASTER_DB", "PostgreSQL")
 DB_NAME = getenv("DB_NAME")
 DB_USER = getenv("DB_USER")
 DB_PASSWORD = getenv("DB_PASSWORD")
