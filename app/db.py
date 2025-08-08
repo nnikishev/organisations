@@ -27,12 +27,14 @@ class PostgresDatabase(Database):
     def __init__(self):
         self.lookup_field = "uuid"
 
-    def get_db_url(self) -> str:
+    @staticmethod
+    def get_db_url() -> str:
         return f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-    def get_session(self, db_url: str = None) -> AsyncSession:
+    @staticmethod
+    def get_session(db_url: str = None) -> AsyncSession:
         if not db_url:
-            db_url = self.get_db_url()
+            db_url = PostgresDatabase.get_db_url()
 
         engine = create_async_engine(
             db_url,
@@ -50,7 +52,7 @@ class PostgresDatabase(Database):
 
     async def create(self, new: Any, model: Type[T]) -> T:
         new_object = model(**new.dict(exclude_none=True))
-        async with self.get_session() as session:
+        async with PostgresDatabase.get_session() as session:
             try:
                 session.add(new_object)
                 await session.commit()
@@ -72,7 +74,7 @@ class PostgresDatabase(Database):
                 )
 
     async def fetch_one(self, model: Type[T], filters: Dict = None) -> Optional[T]:
-        async with self.get_session() as session:
+        async with PostgresDatabase.get_session() as session:
             stmt = select(model)
             if filters:
                 stmt = stmt.filter_by(**filters)
@@ -83,16 +85,25 @@ class PostgresDatabase(Database):
         self,
         model: Type[T],
         filters: Dict = None,
+        m2m_filters: Dict = None,
+        name: str = None,
         skip: int = 0,
         limit: int = PAGE_SIZE,
         order_by: str = None,
         sort_order: str = SortOrder.DESC.value,
     ) -> List[T]:
-        async with self.get_session() as session:
+        async with PostgresDatabase.get_session() as session:
             stmt = select(model).offset(skip).limit(limit)
 
+            if name:
+                stmt = stmt.where(model.name.ilike(f"%{name}%"))
             if filters:
                 stmt = stmt.filter_by(**filters)
+            if m2m_filters:
+                for relation, condition in m2m_filters.items():
+                    relation_attr = getattr(model, relation)
+                    stmt = stmt.join(relation_attr)
+                    stmt = stmt.where(condition)
 
             if order_by:
                 column = getattr(model, order_by, None)
@@ -112,7 +123,7 @@ class PostgresDatabase(Database):
         update_data: Dict,
         return_updated: bool = False,
     ) -> Optional[T]:
-        async with self.get_session() as session:
+        async with PostgresDatabase.get_session() as session:
             try:
                 stmt = update(model).filter_by(**filters).values(**update_data)
 
@@ -121,6 +132,10 @@ class PostgresDatabase(Database):
                     result = await session.execute(stmt)
                     updated_obj = result.scalars().first()
                     await session.commit()
+                    stmt = select(model).filter_by(**filters)
+                    query = await session.execute(stmt)
+                    updated_obj = query.scalars().first()
+
                     return updated_obj
                 else:
                     await session.execute(stmt)
@@ -143,7 +158,7 @@ class PostgresDatabase(Database):
                 )
 
     async def delete(self, model: Type[T], filters: Dict) -> bool:
-        async with self.get_session() as session:
+        async with PostgresDatabase.get_session() as session:
             try:
                 stmt = delete(model).filter_by(**filters)
                 result = await session.execute(stmt)

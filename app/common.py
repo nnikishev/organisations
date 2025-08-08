@@ -1,10 +1,10 @@
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, List, Optional, TypeVar
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel
 
 from app.db import PostgresDatabase
-from app.enums import StorageType
+from app.enums import SortOrder, StorageType
 from app.logging import logger
 from settings import MASTER_DB
 
@@ -13,9 +13,9 @@ M = TypeVar("M", bound=BaseModel)
 
 
 class CRUD:
-    model: Type[T] = None
-    create_update_schema: Type[M] = None
-    lookup_field: str = "uuid"
+    model = None
+    create_update_schema = None
+    lookup_field = "uuid"
 
     def __init__(self):
         match MASTER_DB:
@@ -48,18 +48,22 @@ class CRUD:
         self,
         skip: int = 0,
         limit: int = 100,
-        filters: Dict = None,
+        filters=None,
+        m2m_filters=None,
+        name: str = None,
         order_by: str = None,
-        desc_order: bool = False,
+        sort_order: str = SortOrder.DESC.value,
     ) -> List[T]:
         try:
             return await self.db.fetch_many(
                 self.model,
                 filters=filters,
+                m2m_filters=m2m_filters,
+                name=name,
                 skip=skip,
                 limit=limit,
                 order_by=order_by,
-                desc_order=desc_order,
+                sort_order=sort_order,
             )
         except Exception as e:
             logger.error(f"Ошибка получения списка {self.model.__name__}: {str(e)}")

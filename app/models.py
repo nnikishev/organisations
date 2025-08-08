@@ -7,12 +7,27 @@ from sqlalchemy.orm import relationship, validates
 
 Base = declarative_base()
 
-organization_activity_association = Table(
+
+organization_phone = Table(
+    "organization_phone",
+    Base.metadata,
+    Column("organization_id", UUID(as_uuid=True), ForeignKey("organizations.uuid")),
+    Column("phone_id", Integer, ForeignKey("phones.id")),
+)
+
+organization_activity = Table(
     "organization_activity",
     Base.metadata,
-    Column("organization_uuid", UUID(as_uuid=True), ForeignKey("organizations.uuid")),
-    Column("activity_uuid", UUID(as_uuid=True), ForeignKey("activities.uuid")),
+    Column("organization_id", UUID(as_uuid=True), ForeignKey("organizations.uuid")),
+    Column("activity_id", UUID(as_uuid=True), ForeignKey("activity.uuid")),
 )
+
+
+class Phone(Base):
+    __tablename__ = "phones"
+
+    id = Column(Integer, primary_key=True)
+    number = Column(String(50), nullable=False, unique=True)
 
 
 class Organization(Base):
@@ -20,11 +35,19 @@ class Organization(Base):
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
-    phone = Column(String(50), nullable=False, unique=True)
 
-    building_uuid = Column(UUID(as_uuid=True), ForeignKey("buildings.uuid"))
-    building = relationship("Building", back_populates="organizations")
-    activities = relationship("Activity", secondary=organization_activity_association)
+    building_uuid = Column(
+        UUID(as_uuid=True), ForeignKey("buildings.uuid"), nullable=True
+    )
+    building = relationship("Building", back_populates="organizations", lazy="selectin")
+
+    phones = relationship("Phone", secondary=organization_phone, lazy="selectin")
+    activities = relationship(
+        "Activity",
+        secondary=organization_activity,
+        back_populates="organizations",
+        lazy="selectin",
+    )
 
 
 class Building(Base):
@@ -45,8 +68,13 @@ class Activity(Base):
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
-    parent_uuid = Column(Integer, ForeignKey("activity.uuid"))
-    parent = relationship("Activity", remote_side=[id], backref="children")
+    parent_uuid = Column(UUID(as_uuid=True), ForeignKey("activity.uuid"), nullable=True)
+
+    parent = relationship("Activity", remote_side=[uuid], backref="children")
+
+    organizations = relationship(
+        "Organization", secondary=organization_activity, back_populates="activities"
+    )
 
     @property
     def depth(self):
@@ -54,6 +82,6 @@ class Activity(Base):
 
     @validates("parent")
     def _validate_parent(self, key, parent):
-        if parent and parent.depth + 1 > Activity.MAX_DEPTH:
-            raise ValueError(f"Нельзя вложить более чем {Activity.MAX_DEPTH} уровней")
+        if parent and parent.depth + 1 > self.MAX_DEPTH:
+            raise ValueError(f"Нельзя вложить более чем {self.MAX_DEPTH} уровней")
         return parent

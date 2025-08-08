@@ -17,6 +17,7 @@ DB_PORT = getenv("DB_PORT")
 DB_CONN_TIMEOUT = getenv("DB_CONN_TIMEOUT", 3)
 DB_ONESQL_TIMEOUT = getenv("DB_ONESQL_TIMEOUT", 10)
 
-CORS_ORIGIN_WHITELIST = [h.strip() for h in getenv("CORS_ORIGIN_WHITELIST").split(",")]
+API_KEY = getenv("API_KEY", "very_strong_password")
+
 
 PAGE_SIZE = getenv("PAGE_SIZE", 20)

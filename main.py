@@ -1,14 +1,12 @@
 from fastapi import FastAPI
-from fastapi.openapi.docs import (
-    get_redoc_html,
-    get_swagger_ui_html,
-)
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.staticfiles import StaticFiles
 
 from app import views
 
-from settings import CORS_ORIGIN_WHITELIST
-
 app = FastAPI(docs_url=None, redoc_url=None)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/docs", include_in_schema=False)
