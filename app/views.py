@@ -1,13 +1,15 @@
 import uuid
-from typing import List
+from typing import List, Optional
 
 from fastapi import Header, HTTPException, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi_utils.cbv import cbv
 from fastapi_utils.inferring_router import InferringRouter
+from geoalchemy2 import Geography
+from geoalchemy2.functions import ST_Point
 from pydantic import UUID4
-from sqlalchemy import insert, select
+from sqlalchemy import func, insert, select
 
 from app.common import CRUD
 from app.db import PostgresDatabase
@@ -51,6 +53,44 @@ class BuildingViews(CRUD):
     model = Building
     create_update_schema = BuildingCreate
 
+    @router.get(
+        "/buildings/nearby/",
+        response_model=List[BuildingSchema],
+        summary="Поиск зданий в заданной области",
+    )
+    async def get_buildings_in_area(
+        self,
+        lat: Optional[float] = None,
+        lng: Optional[float] = None,
+        radius: Optional[float] = None,
+        min_lat: Optional[float] = None,
+        max_lat: Optional[float] = None,
+        min_lng: Optional[float] = None,
+        max_lng: Optional[float] = None,
+    ):
+        if radius is None and not all([min_lat, max_lat, min_lng, max_lng]):
+            raise HTTPException(
+                400, "Укажите либо radius, либо все границы прямоугольника"
+            )
+        if radius is not None and (lat is None or lng is None):
+            raise HTTPException(
+                400, "Для радиусного поиска нужны оба параметра: lat и lng"
+            )
+        geog_point = func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326).cast(Geography)
+        if radius is not None:
+            stmt = select(Building).where(
+                func.ST_DWithin(Building.location.cast(Geography), geog_point, radius)
+            )
+        else:
+            stmt = select(Building).where(
+                func.ST_Y(Building.location).between(min_lat, max_lat),
+                func.ST_X(Building.location).between(min_lng, max_lng),
+            )
+        async with PostgresDatabase.get_session() as session:
+            result = await session.execute(stmt)
+            buildings = result.scalars().all()
+        return buildings
+
     @router.post(
         "/buildings/",
         tags=["buildings"],
@@ -59,15 +99,15 @@ class BuildingViews(CRUD):
         summary="Создать здание",
     )
     async def create_building(self, data: BuildingCreate):
-        building = await super().create(data)
-        return JSONResponse(
-            jsonable_encoder(building), status_code=status.HTTP_201_CREATED
-        )
+        location = func.ST_SetSRID(ST_Point(data.longitude, data.latitude), 4326)
+        new = {"address": data.address, "location": location}
+        building = await super().create(new)
+        return building
 
     @router.get(
         "/buildings/",
         tags=["buildings"],
-        response_model=BuildingSchema,
+        response_model=List[BuildingSchema],
         status_code=status.HTTP_200_OK,
         summary="Список зданий",
     )
@@ -79,8 +119,14 @@ class BuildingViews(CRUD):
         order_by: str = None,
         sort_order: str = SortOrder.DESC.value,
     ):
-        buildings = await super().get_list(skip, limit, filters, order_by, sort_order)
-        return JSONResponse(jsonable_encoder(buildings), status_code=status.HTTP_200_OK)
+        buildings = await super().get_list(
+            skip=skip,
+            limit=limit,
+            filters=filters,
+            order_by=order_by,
+            sort_order=sort_order,
+        )
+        return buildings
 
 
 @cbv(router)
@@ -114,6 +160,42 @@ class ActivitiesViews(CRUD):
         return activities
 
     @router.get(
+        "/organizations/nearby/",
+        response_model=List[OrganisationSchema],
+        summary="Поиск организаций в заданной области",
+    )
+    async def get_organizations_in_area(
+        self,
+        lat: float,
+        lng: float,
+        radius: float = None,
+        min_lat: float = None,
+        max_lat: float = None,
+        min_lng: float = None,
+        max_lng: float = None,
+    ):
+        buildings = await BuildingViews().get_buildings_in_area(
+            lat=lat,
+            lng=lng,
+            radius=radius,
+            min_lat=min_lat,
+            max_lat=max_lat,
+            min_lng=min_lng,
+            max_lng=max_lng,
+        )
+
+        if not buildings:
+            return []
+
+        building_uuids = [b.uuid for b in buildings]
+        stmt = select(Organization).where(
+            Organization.building_uuid.in_(building_uuids)
+        )
+        async with PostgresDatabase.get_session() as session:
+            result = await session.execute(stmt)
+        return result.scalars().all()
+
+    @router.get(
         "/activities/{uuid}/get_nested_activities",
         tags=["activities"],
         response_model=List[ActivityShema],
@@ -133,14 +215,12 @@ class ActivitiesViews(CRUD):
     )
     async def create_activity(self, data: ActivityCreate):
         activity = await super().create(data)
-        return JSONResponse(
-            jsonable_encoder(activity), status_code=status.HTTP_201_CREATED
-        )
+        return activity
 
     @router.get(
         "/activities/",
         tags=["activities"],
-        response_model=ActivityShema,
+        response_model=List[ActivityShema],
         status_code=status.HTTP_200_OK,
         summary="Список деятельностей ",
     )
@@ -156,9 +236,7 @@ class ActivitiesViews(CRUD):
         activities = await super().get_list(
             skip, limit, filters, m2m_filters, order_by, sort_order
         )
-        return JSONResponse(
-            jsonable_encoder(activities), status_code=status.HTTP_200_OK
-        )
+        return activities
 
     @router.get(
         "/activities/{uuid}",
@@ -180,7 +258,7 @@ class ActivitiesViews(CRUD):
     )
     async def update_activitiy(self, uuid: UUID4, data: ActivityCreate):
         activity = await super().update(uuid, data)
-        return JSONResponse(jsonable_encoder(activity), status_code=status.HTTP_200_OK)
+        return activity
 
 
 @cbv(router)
@@ -239,14 +317,12 @@ class OrganizationViews(CRUD):
 
             await session.commit()
             await session.refresh(organisation)
-        return JSONResponse(
-            jsonable_encoder(organisation), status_code=status.HTTP_201_CREATED
-        )
+        return organisation
 
     @router.get(
         "/organizations/",
         tags=["organizations"],
-        response_model=OrganisationSchema,
+        response_model=List[OrganisationSchema],
         status_code=status.HTTP_200_OK,
         summary="Список организаций",
     )
@@ -281,9 +357,7 @@ class OrganizationViews(CRUD):
         organisations = await super().get_list(
             skip, limit, filters, m2m_filters, name, order_by, sort_order
         )
-        return JSONResponse(
-            jsonable_encoder(organisations), status_code=status.HTTP_200_OK
-        )
+        return organisations
 
     @router.get(
         "/organizations/{uuid}",
@@ -294,9 +368,7 @@ class OrganizationViews(CRUD):
     )
     async def get_organization(self, uuid: UUID4):
         organisation = await super().get(uuid)
-        return JSONResponse(
-            jsonable_encoder(organisation), status_code=status.HTTP_200_OK
-        )
+        return organisation
 
     @router.patch(
         "/organizations/{uuid}",
@@ -307,9 +379,7 @@ class OrganizationViews(CRUD):
     )
     async def update_organization(self, uuid: UUID4, data: OrganisationCreateUpdate):
         organisation = await super().update(uuid, data)
-        return JSONResponse(
-            jsonable_encoder(organisation), status_code=status.HTTP_200_OK
-        )
+        return organisation
 
 
 @cbv(router)
@@ -326,6 +396,4 @@ class PhonesViews(CRUD):
     )
     async def create_activity(self, data: PhoneCreate):
         phone = await super().create(data)
-        return JSONResponse(
-            jsonable_encoder(phone), status_code=status.HTTP_201_CREATED
-        )
+        return phone

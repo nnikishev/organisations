@@ -17,6 +17,7 @@ greenlet = "^3.2.3"
 fastapi-utils = "^0.8.0"
 typing-inspect = "^0.9.0"
 psycopg2 = "^2.9.10"
+geoalchemy2 = {extras = ["shapely"], version = "^0.18.0"}
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^3.4.0"

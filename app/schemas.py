@@ -12,12 +12,12 @@ class OrganisationCreateUpdate(BaseModel):
 
 class OrganisationSchema(OrganisationCreateUpdate):
     uuid: UUID4
-    activities: List["ActivityShema"]
-    phones: List["PhoneSchema"]
-    building: "BuildingSchema"
+    activities: Optional[List["ActivityShema"]] = []
+    phones: Optional[List["PhoneSchema"]] = []
+    building: Optional["BuildingSchema"] = {}
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class PhoneCreate(BaseModel):
@@ -28,7 +28,7 @@ class PhoneSchema(PhoneCreate):
     id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ActivityCreate(BaseModel):
@@ -49,8 +49,11 @@ class BuildingCreate(BaseModel):
     longitude: float
 
 
-class BuildingSchema(BuildingCreate):
+class BuildingSchema(BaseModel):
+    address: str
     uuid: UUID4
+    latitude: float
+    longitude: float
 
     class Config:
-        orm_mode = True
+        from_attributes = True

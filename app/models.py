@@ -1,6 +1,8 @@
 import uuid
 
-from sqlalchemy import Column, Float, ForeignKey, Integer, String, Table
+from geoalchemy2 import Geometry
+from geoalchemy2.shape import to_shape
+from sqlalchemy import Column, ForeignKey, Integer, String, Table, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, validates
@@ -55,10 +57,30 @@ class Building(Base):
 
     uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     address = Column(String(255), nullable=False)
-    latitude = Column(Float, nullable=False)
-    longitude = Column(Float, nullable=False)
+    location = Column(Geometry(geometry_type="POINT", srid=4326))
 
     organizations = relationship("Organization", back_populates="building")
+    from sqlalchemy.ext.hybrid import hybrid_property
+
+    @hybrid_property
+    def longitude(self) -> float:
+        # Преобразуем WKBElement в shapely Point
+        point = to_shape(self.location)
+        return point.x
+
+    @longitude.expression
+    def longitude(cls):
+        # SQL-выражение для извлечения долготы на уровне БД
+        return func.ST_X(cls.location)
+
+    @hybrid_property
+    def latitude(self) -> float:
+        point = to_shape(self.location)
+        return point.y
+
+    @latitude.expression
+    def latitude(cls):
+        return func.ST_Y(cls.location)
 
 
 class Activity(Base):

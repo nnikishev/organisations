@@ -51,7 +51,10 @@ class PostgresDatabase(Database):
         return async_session()
 
     async def create(self, new: Any, model: Type[T]) -> T:
-        new_object = model(**new.dict(exclude_none=True))
+        try:
+            new_object = model(**new.dict(exclude_none=True))
+        except AttributeError:
+            new_object = model(**new)
         async with PostgresDatabase.get_session() as session:
             try:
                 session.add(new_object)
