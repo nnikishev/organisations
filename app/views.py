@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi_utils.cbv import cbv
@@ -55,6 +55,7 @@ class BuildingViews(CRUD):
 
     @router.get(
         "/buildings/nearby/",
+        tags=["geo_methods"],
         response_model=List[BuildingSchema],
         summary="Поиск зданий в заданной области",
     )
@@ -67,6 +68,7 @@ class BuildingViews(CRUD):
         max_lat: Optional[float] = None,
         min_lng: Optional[float] = None,
         max_lng: Optional[float] = None,
+        api_key: str = Depends(api_key_auth),
     ):
         if radius is None and not all([min_lat, max_lat, min_lng, max_lng]):
             raise HTTPException(
@@ -98,7 +100,9 @@ class BuildingViews(CRUD):
         status_code=status.HTTP_201_CREATED,
         summary="Создать здание",
     )
-    async def create_building(self, data: BuildingCreate):
+    async def create_building(
+        self, data: BuildingCreate, api_key: str = Depends(api_key_auth)
+    ):
         location = func.ST_SetSRID(ST_Point(data.longitude, data.latitude), 4326)
         new = {"address": data.address, "location": location}
         building = await super().create(new)
@@ -118,6 +122,7 @@ class BuildingViews(CRUD):
         filters=None,
         order_by: str = None,
         sort_order: str = SortOrder.DESC.value,
+        api_key: str = Depends(api_key_auth),
     ):
         buildings = await super().get_list(
             skip=skip,
@@ -160,7 +165,86 @@ class ActivitiesViews(CRUD):
         return activities
 
     @router.get(
+        "/activities/{uuid}/get_nested_activities",
+        tags=["activities"],
+        response_model=List[ActivityShema],
+        status_code=status.HTTP_200_OK,
+        summary="Список вложенных деятельностей от родителя",
+    )
+    async def get_nested_activities(
+        self, uuid: UUID4, api_key: str = Depends(api_key_auth)
+    ):
+        activities = await self._get_activities_from_parent(uuid)
+        return list(activities)
+
+    @router.post(
+        "/activities/",
+        tags=["activities"],
+        response_model=ActivityShema,
+        status_code=status.HTTP_201_CREATED,
+        summary="Создать деятельность ",
+    )
+    async def create_activity(
+        self, data: ActivityCreate, api_key: str = Depends(api_key_auth)
+    ):
+        activity = await super().create(data)
+        return activity
+
+    @router.get(
+        "/activities/",
+        tags=["activities"],
+        response_model=List[ActivityShema],
+        status_code=status.HTTP_200_OK,
+        summary="Список деятельностей ",
+    )
+    async def list_activities(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        order_by: str = None,
+        sort_order: str = SortOrder.DESC.value,
+        api_key: str = Depends(api_key_auth),
+    ):
+        filters = {}
+        m2m_filters = {}
+        activities = await super().get_list(
+            skip, limit, filters, m2m_filters, order_by, sort_order
+        )
+        return activities
+
+    @router.get(
+        "/activities/{uuid}",
+        tags=["activities"],
+        response_model=ActivityShema,
+        status_code=status.HTTP_200_OK,
+        summary="Получить деятельность ",
+    )
+    async def get_activitiy(self, uuid: UUID4, api_key: str = Depends(api_key_auth)):
+        activity = await super().get(uuid)
+        return JSONResponse(jsonable_encoder(activity), status_code=status.HTTP_200_OK)
+
+    @router.patch(
+        "/activities/{uuid}",
+        tags=["activities"],
+        response_model=ActivityShema,
+        status_code=status.HTTP_200_OK,
+        summary="Изменить деятельность ",
+    )
+    async def update_activitiy(
+        self, uuid: UUID4, data: ActivityCreate, api_key: str = Depends(api_key_auth)
+    ):
+        activity = await super().update(uuid, data)
+        return activity
+
+
+@cbv(router)
+class OrganizationViews(CRUD):
+    model = Organization
+    create_update_schema = OrganisationCreateUpdate
+
+    @router.get(
         "/organizations/nearby/",
+        tags=["geo_methods"],
         response_model=List[OrganisationSchema],
         summary="Поиск организаций в заданной области",
     )
@@ -173,6 +257,7 @@ class ActivitiesViews(CRUD):
         max_lat: float = None,
         min_lng: float = None,
         max_lng: float = None,
+        api_key: str = Depends(api_key_auth),
     ):
         buildings = await BuildingViews().get_buildings_in_area(
             lat=lat,
@@ -195,77 +280,6 @@ class ActivitiesViews(CRUD):
             result = await session.execute(stmt)
         return result.scalars().all()
 
-    @router.get(
-        "/activities/{uuid}/get_nested_activities",
-        tags=["activities"],
-        response_model=List[ActivityShema],
-        status_code=status.HTTP_200_OK,
-        summary="Список вложенных деятельностей от родителя",
-    )
-    async def get_nested_activities(self, uuid: UUID4):
-        activities = await self._get_activities_from_parent(uuid)
-        return list(activities)
-
-    @router.post(
-        "/activities/",
-        tags=["activities"],
-        response_model=ActivityShema,
-        status_code=status.HTTP_201_CREATED,
-        summary="Создать деятельность ",
-    )
-    async def create_activity(self, data: ActivityCreate):
-        activity = await super().create(data)
-        return activity
-
-    @router.get(
-        "/activities/",
-        tags=["activities"],
-        response_model=List[ActivityShema],
-        status_code=status.HTTP_200_OK,
-        summary="Список деятельностей ",
-    )
-    async def list_activities(
-        self,
-        skip: int = 0,
-        limit: int = 100,
-        order_by: str = None,
-        sort_order: str = SortOrder.DESC.value,
-    ):
-        filters = {}
-        m2m_filters = {}
-        activities = await super().get_list(
-            skip, limit, filters, m2m_filters, order_by, sort_order
-        )
-        return activities
-
-    @router.get(
-        "/activities/{uuid}",
-        tags=["activities"],
-        response_model=ActivityShema,
-        status_code=status.HTTP_200_OK,
-        summary="Получить деятельность ",
-    )
-    async def get_activitiy(self, uuid: UUID4):
-        activity = await super().get(uuid)
-        return JSONResponse(jsonable_encoder(activity), status_code=status.HTTP_200_OK)
-
-    @router.patch(
-        "/activities/{uuid}",
-        tags=["activities"],
-        response_model=ActivityShema,
-        status_code=status.HTTP_200_OK,
-        summary="Изменить деятельность ",
-    )
-    async def update_activitiy(self, uuid: UUID4, data: ActivityCreate):
-        activity = await super().update(uuid, data)
-        return activity
-
-
-@cbv(router)
-class OrganizationViews(CRUD):
-    model = Organization
-    create_update_schema = OrganisationCreateUpdate
-
     @router.post(
         "/organizations/",
         tags=["organizations"],
@@ -273,7 +287,9 @@ class OrganizationViews(CRUD):
         status_code=status.HTTP_201_CREATED,
         summary="Создать организацию",
     )
-    async def create_organisation(self, data: OrganisationCreateUpdate):
+    async def create_organisation(
+        self, data: OrganisationCreateUpdate, api_key: str = Depends(api_key_auth)
+    ):
         async with PostgresDatabase.get_session() as session:
             organisation_uuid = uuid.uuid4()
             organisation = self.model(
@@ -337,6 +353,7 @@ class OrganizationViews(CRUD):
         phone_id: int = None,
         order_by: str = None,
         sort_order: str = SortOrder.DESC.value,
+        api_key: str = Depends(api_key_auth),
     ):
         filters = {}
         m2m_filters = {}
@@ -366,7 +383,7 @@ class OrganizationViews(CRUD):
         status_code=status.HTTP_200_OK,
         summary="Список организаций",
     )
-    async def get_organization(self, uuid: UUID4):
+    async def get_organization(self, uuid: UUID4, api_key: str = Depends(api_key_auth)):
         organisation = await super().get(uuid)
         return organisation
 
@@ -377,7 +394,12 @@ class OrganizationViews(CRUD):
         status_code=status.HTTP_200_OK,
         summary="Изменить организацию",
     )
-    async def update_organization(self, uuid: UUID4, data: OrganisationCreateUpdate):
+    async def update_organization(
+        self,
+        uuid: UUID4,
+        data: OrganisationCreateUpdate,
+        api_key: str = Depends(api_key_auth),
+    ):
         organisation = await super().update(uuid, data)
         return organisation
 
@@ -394,6 +416,8 @@ class PhonesViews(CRUD):
         status_code=status.HTTP_201_CREATED,
         summary="Добавить телефон",
     )
-    async def create_activity(self, data: PhoneCreate):
+    async def create_activity(
+        self, data: PhoneCreate, api_key: str = Depends(api_key_auth)
+    ):
         phone = await super().create(data)
         return phone

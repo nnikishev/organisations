@@ -23,6 +23,9 @@ geoalchemy2 = {extras = ["shapely"], version = "^0.18.0"}
 pre-commit = "^3.4.0"
 psycopg2-binary = "^2.9.9"
 
+[tool.poetry.requires-plugins]
+poetry-plugin-export = ">=1.8"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
