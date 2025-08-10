@@ -25,14 +25,14 @@ docker-compose up -d
 
 # Environments
 
-- DB_NAME: Имя используемой сервисной БД
-- DB_USER: Пользователь БД
-- DB_PASSWORD: Пароль пользователя
-- DB_HOST: Хост БД
-- DB_PORT: Порт БД
-- DB_CONN_TIMEOUT: Таймаут подключения к БД
-- DB_ONESQL_TIMEOUT: Таймаут на выполнение SQL запроса
-- API_KEY: API ключ доступа, по умолчанию `very_strong_password`
+- `DB_NAME`: Имя используемой сервисной БД
+- `DB_USER`: Пользователь БД
+- `DB_PASSWORD`: Пароль пользователя
+- `DB_HOST`: Хост БД
+- `DB_PORT`: Порт БД
+- `DB_CONN_TIMEOUT`: Таймаут подключения к БД
+- `DB_ONESQL_TIMEOUT`: Таймаут на выполнение SQL запроса
+- `API_KEY`: статический API ключ, по умолчанию `very_strong_password`
 
 
 # Работа с приложением
